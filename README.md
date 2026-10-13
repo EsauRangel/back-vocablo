@@ -32,6 +32,58 @@
 $ yarn install
 ```
 
+## Autenticación y cuentas
+
+Todas las rutas requieren un JWT (`Authorization: Bearer <token>`), salvo `GET /`,
+`POST /auth/register` y `POST /auth/login`. Cada cuenta ve únicamente sus propios mazos y cards:
+intentar acceder a un mazo ajeno responde `404`.
+
+| Método | Ruta | Descripción |
+| ------ | ---- | ----------- |
+| `POST` | `/auth/register` | Crea una cuenta (`email`, `password` ≥ 8 caracteres, `name` opcional) y devuelve `{ accessToken, user }` |
+| `POST` | `/auth/login` | Inicia sesión y devuelve `{ accessToken, user }` |
+| `GET` | `/auth/me` | Datos de la cuenta autenticada |
+
+```bash
+curl -X POST http://localhost:3000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"yo@example.com","password":"password123","name":"Yo"}'
+
+curl http://localhost:3000/decks -H "Authorization: Bearer $TOKEN"
+```
+
+Notas:
+
+- Las contraseñas se guardan con `scrypt` (salt aleatorio por usuario); nunca se devuelve el hash.
+- `JWT_SECRET` es obligatorio cuando `NODE_ENV=production`; en desarrollo se usa un secreto por defecto.
+- Los mazos creados antes de existir las cuentas (sin `ownerId`) son adoptados automáticamente
+  por la primera cuenta que se registre.
+
+## Docker
+
+```bash
+# construir y levantar (http://localhost:3000)
+$ cp .env.example .env   # define al menos JWT_SECRET
+$ docker compose up --build -d
+
+# logs y parada
+$ docker compose logs -f
+$ docker compose down
+```
+
+Variables de entorno soportadas: `PORT` (puerto publicado en el host, 3000 por defecto),
+`CORS_ORIGIN` (lista separada por comas), `DB_FILE` (ruta del JSON, `/app/data/db.json`),
+`JWT_SECRET` (obligatorio) y `JWT_EXPIRES_IN` (`7d` por defecto).
+Los datos persisten en el volumen `cogni-data` montado en `/app/data`.
+
+Sin compose:
+
+```bash
+$ docker build -t back-cogni .
+$ docker run -d -p 3000:3000 -e JWT_SECRET=un-secreto-largo \
+    -v cogni-data:/app/data --name back-cogni back-cogni
+```
+
 ## Running the app
 
 ```bash

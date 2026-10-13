@@ -38,20 +38,25 @@ interface ParsedImport {
 export class DecksService {
   constructor(private readonly storage: JsonStorageService) {}
 
-  findAll(): DeckSummary[] {
-    return this.storage.decks.map((deck) => this.toSummary(deck));
+  findAll(ownerId: string): DeckSummary[] {
+    return this.storage.decks
+      .filter((deck) => deck.ownerId === ownerId)
+      .map((deck) => this.toSummary(deck));
   }
 
-  findOne(id: string): Deck {
-    const deck = this.storage.decks.find((d) => d.id === id);
+  findOne(id: string, ownerId: string): Deck {
+    const deck = this.storage.decks.find(
+      (d) => d.id === id && d.ownerId === ownerId,
+    );
     if (!deck) throw new NotFoundException(`Mazo ${id} no encontrado`);
     return deck;
   }
 
-  async create(dto: CreateDeckDto): Promise<Deck> {
+  async create(dto: CreateDeckDto, ownerId: string): Promise<Deck> {
     const now = new Date().toISOString();
     const deck: Deck = {
       id: randomUUID(),
+      ownerId,
       title: dto.title.trim(),
       cards: [],
       createdAt: now,
@@ -62,22 +67,26 @@ export class DecksService {
     return deck;
   }
 
-  async update(id: string, dto: UpdateDeckDto): Promise<Deck> {
-    const deck = this.findOne(id);
+  async update(id: string, dto: UpdateDeckDto, ownerId: string): Promise<Deck> {
+    const deck = this.findOne(id, ownerId);
     deck.title = dto.title.trim();
     deck.updatedAt = new Date().toISOString();
     await this.storage.save();
     return deck;
   }
 
-  async remove(id: string): Promise<void> {
-    this.findOne(id);
+  async remove(id: string, ownerId: string): Promise<void> {
+    this.findOne(id, ownerId);
     this.storage.decks = this.storage.decks.filter((d) => d.id !== id);
     await this.storage.save();
   }
 
-  async addCard(deckId: string, dto: CreateCardDto): Promise<Card> {
-    const deck = this.findOne(deckId);
+  async addCard(
+    deckId: string,
+    dto: CreateCardDto,
+    ownerId: string,
+  ): Promise<Card> {
+    const deck = this.findOne(deckId, ownerId);
     const card = this.buildCard(dto.cardFront, dto.cardBack);
     deck.cards.push(card);
     deck.updatedAt = card.createdAt;
@@ -89,8 +98,9 @@ export class DecksService {
     deckId: string,
     cardId: string,
     dto: UpdateCardDto,
+    ownerId: string,
   ): Promise<Card> {
-    const deck = this.findOne(deckId);
+    const deck = this.findOne(deckId, ownerId);
     const card = this.findCard(deck, cardId);
     if (dto.cardFront !== undefined) card.cardFront = dto.cardFront.trim();
     if (dto.cardBack !== undefined) card.cardBack = dto.cardBack.trim();
@@ -100,8 +110,12 @@ export class DecksService {
     return card;
   }
 
-  async removeCard(deckId: string, cardId: string): Promise<void> {
-    const deck = this.findOne(deckId);
+  async removeCard(
+    deckId: string,
+    cardId: string,
+    ownerId: string,
+  ): Promise<void> {
+    const deck = this.findOne(deckId, ownerId);
     this.findCard(deck, cardId);
     deck.cards = deck.cards.filter((c) => c.id !== cardId);
     deck.updatedAt = new Date().toISOString();
@@ -109,9 +123,9 @@ export class DecksService {
   }
 
   /** Cards cuya fecha de repaso ya llegó, ordenadas por fecha. */
-  dueCards(deckId: string): Card[] {
+  dueCards(deckId: string, ownerId: string): Card[] {
     const now = Date.now();
-    return this.findOne(deckId)
+    return this.findOne(deckId, ownerId)
       .cards.filter((c) => new Date(c.nextReview).getTime() <= now)
       .sort(
         (a, b) =>
@@ -123,8 +137,9 @@ export class DecksService {
     deckId: string,
     cardId: string,
     rating: ReviewRating,
+    ownerId: string,
   ): Promise<Card> {
-    const deck = this.findOne(deckId);
+    const deck = this.findOne(deckId, ownerId);
     const card = this.findCard(deck, cardId);
     const now = Date.now();
     card.level = rating;
@@ -138,12 +153,14 @@ export class DecksService {
   async importAsNewDeck(
     buffer: Buffer,
     fileName: string,
+    ownerId: string,
     title?: string,
   ): Promise<Deck> {
     const parsed = this.parseImport(buffer);
     const now = new Date().toISOString();
     const deck: Deck = {
       id: randomUUID(),
+      ownerId,
       title:
         title?.trim() ||
         parsed.title ||
@@ -159,8 +176,12 @@ export class DecksService {
   }
 
   /** Agrega las cards de un archivo JSON a un mazo existente. */
-  async importIntoDeck(deckId: string, buffer: Buffer): Promise<Deck> {
-    const deck = this.findOne(deckId);
+  async importIntoDeck(
+    deckId: string,
+    buffer: Buffer,
+    ownerId: string,
+  ): Promise<Deck> {
+    const deck = this.findOne(deckId, ownerId);
     const parsed = this.parseImport(buffer);
     deck.cards.push(...parsed.cards);
     deck.updatedAt = new Date().toISOString();
@@ -240,6 +261,20 @@ export class DecksService {
       });
     }
     return { title, cards };
+  }
+
+  /**
+   * Asigna los mazos heredados (sin ownerId, creados antes de las cuentas)
+   * a la primera cuenta registrada. Devuelve cuántos adoptó.
+   */
+  async adoptOrphanDecks(ownerId: string): Promise<number> {
+    const orphans = this.storage.decks.filter((d) => !d.ownerId);
+    if (orphans.length === 0) return 0;
+    orphans.forEach((deck) => {
+      deck.ownerId = ownerId;
+    });
+    await this.storage.save();
+    return orphans.length;
   }
 
   private buildCard(cardFront: string, cardBack: string): Card {

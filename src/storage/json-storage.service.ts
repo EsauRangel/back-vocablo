@@ -1,9 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { dirname, join } from 'path';
+import { User } from '../auth/entities/user.entity';
 import { Deck } from '../decks/entities/deck.entity';
 
 interface Database {
+  users: User[];
   decks: Deck[];
 }
 
@@ -15,18 +17,29 @@ interface Database {
 export class JsonStorageService implements OnModuleInit {
   private readonly filePath =
     process.env.DB_FILE ?? join(process.cwd(), 'data', 'db.json');
-  private db: Database = { decks: [] };
+  private db: Database = { users: [], decks: [] };
   private writeQueue: Promise<void> = Promise.resolve();
 
   async onModuleInit() {
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
       const parsed = JSON.parse(raw) as Partial<Database>;
-      this.db = { decks: Array.isArray(parsed.decks) ? parsed.decks : [] };
+      this.db = {
+        users: Array.isArray(parsed.users) ? parsed.users : [],
+        decks: Array.isArray(parsed.decks) ? parsed.decks : [],
+      };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       await this.persist();
     }
+  }
+
+  get users(): User[] {
+    return this.db.users;
+  }
+
+  set users(users: User[]) {
+    this.db.users = users;
   }
 
   get decks(): Deck[] {

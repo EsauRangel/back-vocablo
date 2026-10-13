@@ -10,6 +10,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       DB_FILE: /app/data/db.json
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en un archivo .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
     volumes:
       - cogni-data:/app/data

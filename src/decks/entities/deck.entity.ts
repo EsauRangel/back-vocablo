@@ -27,6 +27,8 @@ export interface Card {
 
 export interface Deck {
   id: string;
+  /** Cuenta propietaria del mazo. */
+  ownerId: string;
   title: string;
   cards: Card[];
   createdAt: string;
