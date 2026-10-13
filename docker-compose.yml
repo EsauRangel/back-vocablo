@@ -1,0 +1,18 @@
+services:
+  back-cogni:
+    build: .
+    image: back-cogni:latest
+    container_name: back-cogni
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_FILE: /app/data/db.json
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
+    volumes:
+      - cogni-data:/app/data
+
+volumes:
+  cogni-data:
